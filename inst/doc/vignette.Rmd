@@ -1,0 +1,501 @@
+---
+title: "PophelperSpatial 1.0.0"
+output: 
+  html_document: 
+    code_folding: "none"
+    toc: true
+    toc_depth: 3
+    toc_float:
+      collapsed: false
+      smooth_scroll: true
+    number_sections: true
+  highlight: tango 
+  theme: flatly
+vignette: >
+  %\VignetteIndexEntry{PophelperSpatial Tutorial}
+  %\VignetteEngine{knitr::rmarkdown}
+  \usepackage[utf8]{inputenc}
+---
+
+__Roy M Francis__ | 22-Dec-2016  
+
+```{r,echo=FALSE,message=FALSE,results='hide',warning=FALSE,eval=TRUE}
+options(rpubs.upload.method = "internal")
+knitr::opts_chunk$set(collapse = TRUE)
+#source("D:/Data/Dropbox/Rwork/pophelperRpackage/pophelper/R/pophelper.R")
+pkgname <- "pophelper"
+library(pophelperSpatial)
+```
+
+# Introduction  
+
+This vignette/tutorial aims to demonstrate the use of R package `pophelperSpatial`. This package incorporates spatial/geographic data with q-matrices from programs such as ADMIXTURE, FASTSTRUCTURE, STRUCTURE, TESS etc. Assignment values of individuals in a q-matrix is interpolated over geographical coordinates of indiviudals using a variety of methods such as Kriging, inverse distance weighting, etc. Another function plots individuals spatially coloured by clusters based on maximum assignment value.  
+
+This vignette covers the installation and use of all functions in the `pophelperSpatial` package. Input and output codes are printed in a font different from body text like `this`.  
+
+----
+
+# Installation  
+
+The source code is available from [GitHub](https://github.com/royfrancis/pophelperSpatial). You need to have R (>= 3.3.2) installed on your system.The first step is to start a fresh R session and install the dependency packages required for `pophelperSpatial` library.  
+
+```{r,echo=TRUE,eval=FALSE,results='hide'}
+install.packages(c("akima","Cairo","devtools","fields","ggplot2","gridExtra","gtable","PBSmapping","spatstat","tidyr"),dependencies=T)
+```
+
+Load the `devtools` package to enable installing from GitHub.  
+
+```{r,echo=TRUE,eval=FALSE,results='hide'}
+# Install devtools package
+install.packages('devtools',dependencies=T)
+library(devtools)
+```
+
+The `pophelper` package is used to read q-matrices from various input file formats. Therefore, we install both packages `pophelper` and `pophelperSpatial`.  
+
+```{r,echo=TRUE,eval=FALSE,results='hide'}
+# Install the current version of pophelper
+install_github('royfrancis/pophelper')
+# Install the current version of pophelperSpatial
+install_github('royfrancis/pophelperSpatial')
+```
+
+Note that `ggplot2` version must be 2.2.0 or higher. And `pophelper` version must be 2.0.0 or higher. Then load both libraries as below.  
+
+```{r,echo=TRUE,eval=FALSE,results='hide'}
+# load library
+library(pophelper)
+library(pophelperSpatial)
+
+# check version
+packageDescription("ggplot2", fields="Version")
+packageDescription("pophelper", fields="Version")
+packageDescription("pophelperSpatial", fields="Version")
+```
+
+The next step is to set the working directory. The working directory is a folder that usually contains the run files of interest so as to allow R to access it. The working directory must have read-write-execute permissions. Functions may produce outputs such as text files or images which will be exported to the working directory. The working directory can be set by running the command below using a path or by selecting the folder interactively in the popup window.  
+
+```{r,echo=TRUE,eval=FALSE,results='hide'}
+setwd("path")
+# setwd(choose.dir())
+```
+
+Standard help and documentation for all functions are obtained using `?`.  
+
+```{r,echo=TRUE,eval=FALSE,results='hide'}
+?plotQInterpolate
+?plotQSpatial
+# If using RStudio, press tab inside function to see arguments.
+# plotQSpatial(<press tab>)
+```
+
+----
+
+# Input files  
+
+The functions require a q-matrix run data and xy coordinates. The input format for q-matrix is referred to as a `qlist`. A qlist can be created from STRUCTURE, TESS, or any numeric delimited text files (such as ADMIXTURE run files or FASTSTRUCTURE files) using the function `readQ` from `pophelper` package. For more information on the `pophelper` package refer the `pophelper` [GitHub](https://github.com/royfrancis/pophelper) page.  
+
+```{r, eval=FALSE,echo=TRUE}
+# vector of paths
+slist <- list.files(path=system.file("files/structure",package="pophelperSpatial"),full.names=T)
+# convert one file to a qlist
+sf <- readQ(files=slist[1])
+str(sf)
+```
+
+`qlist`s can also be create manually or generated in R just like any other list without using one of the `readQ*` functions in pophelper.  
+
+Here is a toy qlist object
+```{r, eval=FALSE,echo=TRUE}
+# create two data frames
+df1 <- data.frame(Cluster1=c(0.2,0.4,0.6,0.2),Cluster2=c(0.8,0.6,0.4,0.8))
+df2 <- data.frame(Cluster1=c(0.3,0.1,0.5,0.6),Cluster2=c(0.7,0.9,0.5,0.4))
+
+# one-element qlist
+q1 <- list("sample1"=df1)
+str(q1)
+
+# two-element qlist
+q2 <- list("sample1"=df1,"sample2"=df2)
+str(q2)
+```
+
+Input for the spatial/geographic coordinates must be an R data.frame object with two columns 'x' (latitude) and 'y' (longitude) in that order. The columns must be numeric datatype and the number of rows must be equal to the number of individuals in the qlist. There must be no missing values. Coordinates must be in standard longitude-latitude (LL) decimal format (eg: 21.0232, 43.0232). The coordinate file can be read in using standard R functions.  
+
+```{r, eval=FALSE,echo=TRUE}
+# coords path
+coordfile <- system.file("files/coords239.txt",package="pophelperSpatial")
+# read coordfile
+xy <- read.delim(coordfile,header=F)
+str(xy)
+```
+
+----
+
+# Functions  
+The `pophelperSpatial` package currently has the functions listed below.  
+ 
+```{r, eval=FALSE,echo=TRUE}
+plotQInterpolate()     # Spatially interpolate clusters from a qlist
+plotQSpatial()         # Cluster by max assignment and plot points spatially
+```
+
+## plotQInterpolate  
+
+The `plotQInterpolate()` function allows to spatially interpolate a qlist. Files needed are a qlist and geographical coordinate files of same length. The first column must be x (latitude) and second column y (longitude). Note that none of the methods are able to handle missing coordinate data. All coordinates must be available. Note that this is generally a slow function and can take several minutes.  
+
+Here, we will use some sample files from the library.  
+
+```{r,echo=TRUE, eval=FALSE}
+# using STRUCTURE files
+q <- readQ(system.file("files/Structure239_4",package="pophelperSpatial"))
+xy <- read.delim(system.file("files/coords239.txt",package="pophelperSpatial"),header=F)
+plotQInterpolate(qlist=q,coords=xy)
+# adjust dimensions and legend size as required
+plotQInterpolate(qlist=q,coords=xy,height=15,width=22,legendkeysize=0.4)
+# finer grid # very slow
+plotQInterpolate(qlist=q,coords=xy,height=15,width=22,legendkeysize=0.4, 
+                    gridsize=100)
+
+# using TESS runs
+# specify path for datafile and coordsfile
+q <- readQ(list.files(path=system.file("files/tess",package="pophelperSpatial"),full.names=T))[1]
+xy <- read.delim(system.file("files/coords75.txt",package="pophelperSpatial"),header=F)
+
+plotQInterpolate(qlist=q,coords=xy)
+# adjusting legend size and legend text
+plotQInterpolate(qlist=q,coords=xy,legendkeysize=0.4,legendtextsize=6)
+# removing legend
+plotQInterpolate(qlist=q,coords=xy,legend=FALSE)
+# set aspect ratio to 1
+plotQInterpolate(qlist=q,coords=xy,coordsratio=1)
+# show axes
+plotQInterpolate(qlist=q,coords=xy,showaxis=T,legendpos=c(0.99,0.99))
+# change plot element colours
+plotQInterpolate(qlist=q,coords=xy,showaxis=T,legendpos=c(0.99,0.99),plotcolour="blue")
+
+# try ADMIXTURE files
+q <- readQ(system.file("files/admixture/admixture_01",package="pophelperSpatial"))
+xy <- read.delim(system.file("files/coords1592.txt",package="pophelperSpatial"),header=F)
+plotQInterpolate(qlist=q,coords=xy,method = "bilinear",height=10,width=26)
+
+# try FASTSTRUCTURE files
+q <- readQ(system.file("files/faststructure/fast-structure_02.meanQ",package="pophelper"))
+xy <- read.delim(system.file("files/coords22.txt",package="pophelper"),header=F)
+plotQInterpolate(qlist=q,coords=xy,method = "bilinear",height=10,width=26)
+```
+
+By default `clusters=NA` which means that all clusters in the file are plotted. A single cluster can be plotted by setting `clusters=3` etc. Several clusters can be plotted as such `clusters=c(1,3)`.  
+ 
+```{r,echo=TRUE, eval=FALSE}
+q <- readQ(system.file("files/Structure239_4",package="pophelperSpatial"))
+xy <- read.delim(system.file("files/coords239.txt",package="pophelperSpatial"),header=F)
+
+# plot cluster 2 only
+plotQInterpolate(qlist=q,coords=xy,clusters=2,height=10,width=12)
+# plot clusters 1 and 3
+plotQInterpolate(qlist=q,coords=xy,clusters=c(1,3),height=10,width=16)
+```
+
+The legend can be moved around in various ways or turned off.  
+
+```{r,echo=TRUE, eval=FALSE}
+# turn off legend
+plotQInterpolate(qlist=q,coords=xy,clusters=2,legend=F)
+# legend inside plot top right
+plotQInterpolate(qlist=q,coords=xy,clusters=2,legendpos=c(1,1))
+# legend outside plot right top
+plotQInterpolate(qlist=q,coords=xy,clusters=2,legendpos="right",legendjust="top")
+# legend outside plot top right
+plotQInterpolate(qlist=q,coords=xy,clusters=2,legendpos="top",legendjust="right")
+```
+
+By default, `exportplot=T` exports an image to the working directory. By default, `imgoutput="join"`, therefore all clusters are plotted in a single figure. Setting `imgoutput="sep"` plots each cluster as a separate file. If a one element qlist is provided and `imgoutput="join"`, `imgoutput` is automatically set to "sep" along with a warning.  
+
+```{r,echo=TRUE, eval=FALSE}
+# separate files
+plotQInterpolate(qlist=q,coords=xy,height=10,width=12,imgoutput="sep")
+```
+
+When using `imgoutput="join"`, the number of rows and columns are automatically decided if the number of clusters < 20. This can also be set manually.  
+
+```{r,echo=TRUE, eval=FALSE}
+# joined default rows and columns
+plotQInterpolate(qlist=q,coords=xy,height=10,width=22)
+# 1 row and 5 columns
+plotQInterpolate(qlist=q,coords=xy,height=8,width=32,ncol=5,nrow=1)
+```
+
+![plotq-interpolate-join](plotq-interpolate-join.png)  
+__Fig. 1:__ *Interpolated plot of a qlist file containing 6 clusters (K=6). The default interpolation algorithm (method) used was kriging. In this particular case, it is known that K=2, therefore only cluster 2 has useful information.*  
+
+The default `gridsize=60` produces rather pixellated grids. Increase `gridsize` to produce finer grid but at a higher computational cost.  
+
+```{r,echo=TRUE, eval=FALSE}
+# default gridsize
+plotQInterpolate(qlist=q,coords=xy,clusters=2,height=10,width=12,gridsize=60)
+# higher resolution grid size
+plotQInterpolate(qlist=q,coords=xy,clusters=2,height=10,width=12,gridsize=120)
+```
+
+The default interpolation algorithm is Kriging (`method="krig"`). We can choose only cluster 2 and try out different interpolation methods. Five methods are currently implemented: bilinear, bicubic, inverse distance weighting, nearest neighbour and kriging. Kriging is predictive while others are essentially direct spatial interpolation. We specify `clusters=2` which plots only cluster 2. The `dataout=T` allows to save the ggplot plot object to a variable and then modify them or combine with other plots. Due to `exportplot=F`, no plots are exported.  
+
+```{r,echo=TRUE, eval=FALSE}
+q <- readQ(list.files(path=system.file("files/tess",package="pophelperSpatial"),full.names=T))[1]
+xy <- read.delim(system.file("files/coords75.txt",package="pophelperSpatial"),header=F)
+
+p1 <- plotQInterpolate(q,xy,legendkeysize=0.3,legendtextsize=5,
+                          clusters=2,dataout=T,method="bilinear",exportplot=F)
+p2 <- plotQInterpolate(q,xy,legendkeysize=0.3,legendtextsize=5,
+                          clusters=2,dataout=T,method="bicubic",exportplot=F)
+p3 <- plotQInterpolate(q,xy,legendkeysize=0.3,legendtextsize=5,
+                          clusters=2,dataout=T,method="idw",exportplot=F)
+p4 <- plotQInterpolate(q,xy,legendkeysize=0.3,legendtextsize=5,
+                          clusters=2,dataout=T,method="nn",exportplot=F)
+p5 <- plotQInterpolate(q,xy,legendkeysize=0.3,legendtextsize=5,
+                          clusters=2,dataout=T,method="krig",exportplot=F)
+
+library(gridExtra)
+png("MethodsComparison.png",height=16,width=22,res=200,units="cm",type="cairo")
+grid.arrange(p1[[1]],p2[[1]],p3[[1]],p4[[1]],p5[[1]],nrow=2,ncol=3)
+dev.off()
+```
+
+![plotq-interpolate-methods](plotq-interpolate-methods.png)  
+__Fig. 2:__ *Interpolated plot of one cluster (Cluster 2) of one qlist containing 6 clusters (K=6) showing different interpolation methods. Row 1 from left: bilinear, bicubic and Inverse distance weighting. Row 2 from left: Nearest neighbour and Kriging.*  
+
+The colours can be changed by providing a character vector of two or more colours to the argument `colours`. A gradient is created from any number of provided colours. The colours can be R colours or hexadecimal values. The R package `RColorBrewer` has a wide range of nice colours.  
+
+```{r,echo=TRUE, eval=FALSE}
+#change colours
+plotQInterpolate(qlist=q,coords=xy,clusters=2,height=10,width=12,colours=c("coral","steelblue"))
+plotQInterpolate(qlist=q,coords=xy,clusters=2,height=10,width=12,colours=c("#A6CEE3", "#3F8EAA","#79C360"))
+
+# view Colorbrewer colours
+library(RColorBrewer)
+display.brewer.all()
+
+# sample plots with custom colours
+p1 <- plotQInterpolate(q,xy,clusters=1:2,colours=brewer.pal(8,"RdYlBu"),
+                          legend=F,exportplot=F,dataout=T)
+p2 <- plotQInterpolate(q,xy,clusters=2,colours=brewer.pal(8,"Spectral"),
+                          legend=F,exportplot=F,dataout=T)
+p3 <- plotQInterpolate(q,xy,clusters=2,colours=rev(brewer.pal(8,"BuPu")),
+                          legend=F,exportplot=F,dataout=T)
+
+png("PlotColours.png",height=8,width=24,res=200,units="cm",type="cairo")
+grid.arrange(p1[[1]],p1[[2]],p2[[1]],p3[[1]],ncol=4)
+dev.off()
+```
+
+![plotq-interpolate-customcolours](plotq-interpolate-customcolours.png)  
+__Fig. 3:__ *Interpolation plots showing some of the colour palettes available in package. Left 2 plots are `brewer.pal(8,"RdYlBu")`, 3^rd^ plot is `brewer.pal(8,"Spectral")` and 4^th^ plot is `brewer.pal(8,"BuPu")`.*  
+
+Note that when using `plotQInterpolate()`, all methods may not work with all sorts of coordinate inputs.  
+
+## plotQSpatial  
+
+The function `plotQSpatial` takes a qlist and plots the individuals based on xy coordinates. Each individual is coloured by the cluster which has the highest assignment probability. The clusters are denoted by colour or point shape. The clusters can also be marked by confidence ellipses or convex hulls. 
+
+Files needed are a qlist and geographical coordinate files of same length. The first column must be x (latitude) and second column y (longitude). Note that none of the methods are able to handle missing coordinate data. All coordinates must be available. Coordinates must be in standard longitude-latitude (LL) decimal format (eg: 21.0232, 43.0232).  
+
+Here, we will use some sample files from the library.  
+
+```{r,echo=TRUE, eval=FALSE}
+library(RColorBrewer)
+q <- readQ(system.file("files/Structure239_4",package="pophelperSpatial"))
+xy <- read.delim(system.file("files/coords239.txt",package="pophelperSpatial"),header=F)
+
+# basic usage
+plotQSpatial(qlist=q,coords=xy)
+# set UTM coordinates. Better geographic distance representation over a scale 
+# such as countries.
+plotQSpatial(q,xy,height=12,setutm=T)
+# without ellipses
+plotQSpatial(q,xy,height=12,ellipse=F)
+# show axis
+plotQSpatial(q,xy,height=12,showaxis=T)
+# change plot element colours
+plotQSpatial(q,xy,height=12,showaxis=T,plotcolour="blue")
+
+# create a 2x2 montage with varying parameters
+# don't export plot, export data, add title
+p1 <- plotQSpatial(q,xy,exportplot=F,dataout=T, plottitle="A")
+# without ellipse, with square points and transparency added
+p2 <- plotQSpatial(q,xy,exportplot=F,dataout=T, plottitle="B",
+                      ellipse=F,pointtype=15,pointalpha=0.4)
+# without ellipse, with convex hulls, coordinates in UTM, points by cluster, 
+# custom colours,show axis
+p3 <- plotQSpatial(q,xy,exportplot=F,dataout=T, 
+                      plottitle="C",ellipse=F,chull=T, setutm=T,pointtype=NA,
+                      pointsize=2,clustercol=brewer.pal(5,"Dark2"),showaxis=T)
+# no ellipse, with convex hull, decreased convexhull transparency, convexhull linetype, 
+# change cluster labels, custom colours, show axis
+p4 <- plotQSpatial(q,xy,exportplot=F,dataout=T, plottitle="D",
+                      ellipse=F,chull=T,chullalpha=0.2,chulltype=3,
+                      legendlab=c("GrpA","GrpB","GrpC","GrpD","GrpE"),
+                      clustercol=brewer.pal(5,"Set1"),showaxis=T)
+
+png("plotQSpatial.png",height=20,width=20,res=250,units="cm",type="cairo")
+gridExtra::grid.arrange(p1,p2,p3,p4,nrow=2,ncol=2)
+dev.off()
+```
+
+![plotq-spatial](plotq-spatial.png)  
+__Fig. 4:__ *Some of the plots created using the function `plotQSpatial()`. A: The basic usage of the function with title added `plottitle="A"`. B: The ellipses are turned off `ellipse=F` and the point shape is changed `pointtype=15` and transparency added to points `pointtransp=0.4`. C: Convex hulls are turned on `chull=T` and coordinates are transformed to UTM `setutm=T`. The points shapes are based on clusters `pointtype=NA`. Custom colours are used `brewer.pal(5,"Dark2")` and axis are shown `showaxis=T`. D: Convex hull transparency is lowered `chulltransp=0.2`, convex hull linetype is changed `chulltype=3`, legend labels are changed `legendlabels=c("PopA","PopB","PopC","PopD","PopE")`. Custom colours are used `brewer.pal(5,"Set1")`.*  
+
+```{r,echo=TRUE, eval=FALSE}
+# try some FASTSTRUCTURE files
+q <- system.file("files/faststructure/fast-structure_02.meanQ",package="pophelper")
+xy <- system.file("files/coords22.txt",package="pophelper")
+plotQSpatial(q,xy)
+```
+
+----
+
+# Compatibility
+
+`pophelperSpatial 1.0.0` has been tested on the following systems:  
+
++ Windows 10 64bit, R 3.3.2  
+
+```{coffee,echo=TRUE, eval=FALSE}
+R version 3.3.2 (2016-10-31)
+Platform: x86_64-w64-mingw32/x64 (64-bit)
+Running under: Windows >= 8 x64 (build 9200)
+
+locale:
+[1] LC_COLLATE=English_United Kingdom.1252  LC_CTYPE=English_United Kingdom.1252   
+[3] LC_MONETARY=English_United Kingdom.1252 LC_NUMERIC=C                           
+[5] LC_TIME=English_United Kingdom.1252    
+
+attached base packages:
+[1] stats     graphics  grDevices utils     datasets  methods   base     
+
+other attached packages:
+[1] pophelperSpatial_1.0.0 pophelper_2.0.0        ggplot2_2.2.0         
+[4] Cairo_1.5-9           
+
+loaded via a namespace (and not attached):
+ [1] Rcpp_0.12.8        knitr_1.15.1       tensor_1.5         magrittr_1.5      
+ [5] maps_3.1.1         munsell_0.4.3      spatstat_1.47-0    colorspace_1.3-1  
+ [9] lattice_0.20-34    plyr_1.8.4         fields_8.10        tools_3.3.2       
+[13] grid_3.3.2         spam_1.4-0         gtable_0.2.0       nlme_3.1-128      
+[17] mgcv_1.8-15        PBSmapping_2.69.76 deldir_0.1-12      abind_1.4-5       
+[21] goftest_1.0-3      lazyeval_0.2.0     assertthat_0.1     tibble_1.2        
+[25] Matrix_1.2-7.1     gridExtra_2.2.1    akima_0.6-2        tidyr_0.6.0       
+[29] rpart_4.1-10       polyclip_1.5-6     sp_1.2-3           scales_0.4.1 
+```
+
++ Windows 7 64bit, R 3.3.2  
+
+```{coffee,echo=TRUE, eval=FALSE}
+R version 3.3.2 (2016-10-31)
+Platform: x86_64-w64-mingw32/x64 (64-bit)
+Running under: Windows 7 x64 (build 7601) Service Pack 1
+
+locale:
+[1] LC_COLLATE=English_United Kingdom.1252  LC_CTYPE=English_United Kingdom.1252   
+[3] LC_MONETARY=English_United Kingdom.1252 LC_NUMERIC=C                           
+[5] LC_TIME=English_United Kingdom.1252    
+
+attached base packages:
+[1] stats     graphics  grDevices utils     datasets  methods   base     
+
+other attached packages:
+[1] pophelperSpatial_1.0.0 pophelper_2.0.0        ggplot2_2.2.0         
+[4] Cairo_1.5-9           
+
+loaded via a namespace (and not attached):
+ [1] Rcpp_0.12.8        tensor_1.5         magrittr_1.5       maps_3.1.1        
+ [5] munsell_0.4.3      spatstat_1.47-0    colorspace_1.3-1   lattice_0.20-34   
+ [9] plyr_1.8.4         fields_8.10        tools_3.3.2        grid_3.3.2        
+[13] spam_1.4-0         gtable_0.2.0       nlme_3.1-128       mgcv_1.8-15       
+[17] PBSmapping_2.69.76 deldir_0.1-12      abind_1.4-5        goftest_1.0-3     
+[21] lazyeval_0.2.0     assertthat_0.1     tibble_1.2         Matrix_1.2-7.1    
+[25] gridExtra_2.2.1    akima_0.6-2        tidyr_0.6.0        rpart_4.1-10      
+[29] polyclip_1.5-6     sp_1.2-3           scales_0.4.1  
+```
+
++ Ubuntu Linux 16.04.1 LTS 64bit, R 3.3.2  
+
+```{coffee,echo=TRUE, eval=FALSE}
+R version 3.3.2 (2016-10-31)
+Platform: x86_64-pc-linux-gnu (64-bit)
+Running under: Ubuntu 16.04.1 LTS
+
+locale:
+ [1] LC_CTYPE=en_US.UTF-8       LC_NUMERIC=C              
+ [3] LC_TIME=en_GB.UTF-8        LC_COLLATE=en_US.UTF-8    
+ [5] LC_MONETARY=en_GB.UTF-8    LC_MESSAGES=en_US.UTF-8   
+ [7] LC_PAPER=en_GB.UTF-8       LC_NAME=C                 
+ [9] LC_ADDRESS=C               LC_TELEPHONE=C            
+[11] LC_MEASUREMENT=en_GB.UTF-8 LC_IDENTIFICATION=C       
+
+attached base packages:
+[1] stats     graphics  grDevices utils     datasets  methods   base     
+
+other attached packages:
+[1] pophelperSpatial_1.0.0 pophelper_2.0.0        ggplot2_2.2.0         
+[4] Cairo_1.5-9           
+
+loaded via a namespace (and not attached):
+ [1] Rcpp_0.12.6        tensor_1.5         magrittr_1.5       maps_3.1.1        
+ [5] munsell_0.4.3      spatstat_1.48-0    colorspace_1.2-6   lattice_0.20-34   
+ [9] plyr_1.8.4         fields_8.10        tools_3.3.2        grid_3.3.2        
+[13] spam_1.3-0         gtable_0.2.0       nlme_3.1-128       mgcv_1.8-16       
+[17] PBSmapping_2.69.76 deldir_0.1-12      abind_1.4-5        goftest_1.0-3     
+[21] lazyeval_0.2.0     assertthat_0.1     tibble_1.1         Matrix_1.2-7.1    
+[25] gridExtra_2.2.1    akima_0.6-2        tidyr_0.6.0        rpart_4.1-10      
+[29] polyclip_1.5-6     sp_1.2-3           scales_0.4.1  
+```
+
++ Scientific Linux 6.8 (Carbon) 64bit, R 3.3.1  
+
+```{coffee,echo=TRUE, eval=FALSE}
+R version 3.3.1 (2016-06-21)
+Platform: x86_64-pc-linux-gnu (64-bit)
+Running under: Scientific Linux release 6.8 (Carbon)
+
+locale:
+ [1] LC_CTYPE=en_US.UTF-8       LC_NUMERIC=C
+ [3] LC_TIME=en_US.UTF-8        LC_COLLATE=en_US.UTF-8
+ [5] LC_MONETARY=en_US.UTF-8    LC_MESSAGES=en_US.UTF-8
+ [7] LC_PAPER=en_US.UTF-8       LC_NAME=C
+ [9] LC_ADDRESS=C               LC_TELEPHONE=C
+[11] LC_MEASUREMENT=en_US.UTF-8 LC_IDENTIFICATION=C
+
+attached base packages:
+[1] stats     graphics  grDevices utils     datasets  methods   base
+
+other attached packages:
+[1] pophelperSpatial_1.0.0 pophelper_2.0.0        ggplot2_2.2.0
+[4] Cairo_1.5-9            testthat_1.0.2         devtools_1.12.0
+
+loaded via a namespace (and not attached):
+ [1] Rcpp_0.12.6        git2r_0.15.0       plyr_1.8.4         tools_3.3.1
+ [5] rpart_4.1-10       digest_0.6.9       goftest_1.0-3      nlme_3.1-128
+ [9] memoise_1.0.0      tibble_1.1         gtable_0.2.0       lattice_0.20-33
+[13] mgcv_1.8-12        Matrix_1.2-6       curl_1.0           spam_1.3-0
+[17] gridExtra_2.2.1    akima_0.6-2        withr_1.0.2        httr_1.2.1
+[21] knitr_1.13         fields_8.10        maps_3.1.0         grid_3.3.1
+[25] R6_2.1.2           tcltk_3.3.1        sp_1.2-3           polyclip_1.5-6
+[29] tensor_1.5         deldir_0.1-12      tidyr_0.6.0        magrittr_1.5
+[33] scales_0.4.1       abind_1.4-5        assertthat_0.1     spatstat_1.48-0
+[37] colorspace_1.2-6   labeling_0.3       PBSmapping_2.69.76 lazyeval_0.2.0
+[41] munsell_0.4.3      crayon_1.3.2
+```
+
+----
+
+# Disclaimer
+
+The `pophelperSpatial` R package is offered free and without warranty of any kind, either expressed or implied. I will not be held liable to you for any damage arising out of the use, modification or inability to use this program. `pophelperSpatial` R package can be used, redistributed and/or modified freely for non-commercial purposes subject to the original source being properly cited. Licensed under GPL-3. Please make sure you verify all your results.  
+
+----
+
+# Contact
+
+If you have any comments, suggestions or issues, report on the [Github issues page](https://github.com/royfrancis/pophelperSpatial/issues).  
+  
+__End of Document.__  

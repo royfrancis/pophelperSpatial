@@ -1,0 +1,9 @@
+pophelperSpatial 1.0.0
+===========
+* 22-Dec-2016
+* the first version of the `pophelperSpatial` package
+* These function were previously part of the `pophelper` package
+* plotRunsInterpolate renamed to plotQInterpolate
+  + Modified to input qlist
+* plotRunsSpatial renamed to plotQSpatial
+  + Modified to input qlist
